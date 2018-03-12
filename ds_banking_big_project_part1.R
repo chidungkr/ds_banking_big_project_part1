@@ -349,56 +349,67 @@ df_nguong %>%
 #  - ds_breast_cancer_cancer.r
 #----------------------------------------------------------------------------------
 
+#------  Case 1: Bỏ biến tương quan cao và phương sai không  ---------#
+data("GermanCredit")
+
+df_ori <- GermanCredit
+Class <- GermanCredit$Class
+
+feature_df <- GermanCredit %>% select(-Class)
+
+# Vị trí cột biến có phương sai zero và loại bỏ: 
+zero_pos <- nearZeroVar(feature_df)
+zero_va <- names(feature_df)[zero_pos]
+feature_df %<>% select(-zero_va)
+
+# Loại tương quan trên 0.75: 
+tuong_quan <- cor(feature_df)
+highCorr <- findCorrelation(tuong_quan, cutoff = .75)
+
+var_name <- names(feature_df)[highCorr]
+
+final_df <- feature_df %>% 
+  select(-var_name) %>% 
+  mutate(Class = Class)
 
 
-#-----------------------------------------------------------------
-#        Giải thích 6: Cách thức hoạt động của gói caret
-#-----------------------------------------------------------------
+# Model thứ nhất: 
+set.seed(1)
+ctrl <- trainControl(method = "repeatedcv",
+                     repeats = 20,
+                     number = 10)
 
+logistic1 <- train(Class ~ .,
+                   data = final_df,
+                   method = "glm", 
+                   trControl = ctrl)
 
-# Một ví dụ về cách vận hành của gói caret: 
+# Model thứ 2: 
+logistic2 <- train(Class ~ .,
+                   data = GermanCredit,
+                   method = "glm", 
+                   trControl = ctrl)
 
-library(AER)
-data(CPS1988)
-dung <- CPS1988 %>% slice(1:10)
+# Đánh giá nhanh: 
+logistic1$resample %>% summary()
+logistic2$resample %>% summary()
 
-# Thực hiện hồi quy OLS bằng hàm lm() của base: 
-ols1 <- dung %>% lm(wage ~ education, data =  .)
-ols1 %>% summary()
+# Đánh giá hình bằng hình ảnh: 
 
-# Thực hiện hồi quy OLS bằng hàm train() của caret: 
+comp_df <- bind_rows(logistic1$resample %>% mutate(Model = "Logistic1"), 
+                     logistic2$resample %>% mutate(Model = "Logistic2"))
 
-set.seed(1709)
-ctrl <- trainControl(method = "repeatedcv", 
-                     number = 2, 
-                     repeats = 1)
+comp_df %>% 
+  ggplot(aes(Model, Accuracy)) + geom_boxplot()
 
-ols2 <- dung %>% 
-  train(wage ~ education, method = "lm", trControl = ctrl, data = .)
-ols2 %>% summary()
+# Đánh giá bằng các tiêu chí thống kê: 
+comp_df %>% 
+  group_by(Model) %>% 
+  summarise_each(funs(mean, median, min, max, n()), Accuracy)
+  
 
-# Giải thích cách thức vận hành: 
-ols2$results
-ols2$resample
+#------  Case 2: Chuẩn hóa dữ liệu (ds_breast_cancer_cancer)  ---------#
 
-# Nguyên nhân như sau:  
-
-d1 <- ols2$control$index$Fold1.Rep1
-training1 <- dung[d1,] # Mẫu huấn luyện thứ nhất. 
-testing1 <- dung[-d1,] # Mẫu kiểm định thứ nhất. 
-tom <- training1 %>% lm(wage ~ education, data = .)
-dubao1 <- predict(tom, testing1)
-Rsquared1 <- cor(dubao1, testing1$wage)^2
-Rsquared1
-
-
-d2 <- ols2$control$index$Fold2.Rep1
-training2 <- dung[d2,]
-testing2 <- dplyr::setdiff(dung, training2)
-ca <- training2 %>% lm(wage ~ education, data = .)
-dubao2 <- predict(ca, testing2)
-Rsquared2 <- cor(dubao2, testing2$wage)^2
-Rsquared2
 
 #---------------------------------------------------------------
 #       Main Project: hmeq.csv  (to be continued in part 2)
